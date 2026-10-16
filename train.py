@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 
-from networks.FSC_Net import FSCNet # 导入DCSAU_Net
+from networks.FSC_Net import  Model
 
 from trainer import trainer_synapse
 
@@ -72,7 +72,7 @@ if __name__ == "__main__":
 
     os.makedirs(snapshot_path, exist_ok=True)
 
-    net = FSCNet.Model(img_channels=3, n_classes=args.num_classes, base_c=64).cuda()
+    net =  Model.Model(img_channels=3, n_classes=args.num_classes, base_c=64).cuda()
 
     trainer = {'Synapse': trainer_synapse, }
     trainer[dataset_name](args, net, snapshot_path)
