@@ -8,10 +8,9 @@ FSC-Net combines **Discrete Wavelet Transform (DWT)** downsampling, a **Spatial-
 
 The following core versions are taken from the provided Conda environment:
 
-- Python 3.10.21
-- PyTorch 2.13.0+cu129
-- torchvision 0.28.0+cu129
-- CUDA Toolkit 12.9
+- Python  3.9.25
+- PyTorch 2.5.1
+- CUDA Toolkit 11.8
 
 Other main Python dependencies include `numpy`, `scipy`, `Pillow`, `h5py`, `medpy`, `matplotlib`, `scikit-learn`, `ptflops`, `tensorboardX`, and `tqdm`.
 
