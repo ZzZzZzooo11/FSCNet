@@ -72,7 +72,7 @@ if __name__ == "__main__":
 
     os.makedirs(snapshot_path, exist_ok=True)
 
-    net =  Model.Model(img_channels=3, n_classes=args.num_classes, base_c=64).cuda()
+    net = Model(img_channels=3, n_classes=args.num_classes, base_c=64).cuda()
 
     trainer = {'Synapse': trainer_synapse, }
     trainer[dataset_name](args, net, snapshot_path)
