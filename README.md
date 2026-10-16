@@ -15,15 +15,6 @@ The following core versions are taken from the provided Conda environment:
 
 Other main Python dependencies include `numpy`, `scipy`, `Pillow`, `h5py`, `medpy`, `matplotlib`, `scikit-learn`, `ptflops`, `tensorboardX`, and `tqdm`.
 
-```bash
-conda create -n FSCNet python=3.10
-conda activate FSCNet
-
-# Install PyTorch and torchvision with a CUDA build compatible with your system.
-# The versions listed above describe the provided local environment.
-pip install numpy scipy pillow h5py medpy matplotlib scikit-learn ptflops tensorboardX tqdm
-```
-
 ## 1. Prepare the Datasets
 
 ### ISIC 2018
@@ -50,15 +41,12 @@ lists/isic2018_list/
 └── test.txt
 ```
 
-Each split file should contain one image ID per line, without the extension. Use the **original experimental splits**, rather than generating new random splits, to reproduce reported results.
+Each split file should contain one image ID per line, without the extension. 
 
 ### LIDC-IDRI
 
 - Download LIDC-IDRI from [The Cancer Imaging Archive (TCIA)](https://www.cancerimagingarchive.net/collection/lidc-idri/).
-- As described in the manuscript, CT values are clipped to **[-1000, 400] HU**, normalized to **[0, 1]**, and selected nodule slices and masks are resized and padded to **128 × 128**.
 - The 7:2:1 split is performed **at the patient level**, to prevent data leakage across subsets.
-
-The public repository does not yet provide a complete, verified LIDC-IDRI preprocessing and training workflow.
 
 ## 2. Train FSC-Net
 
