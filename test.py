@@ -14,7 +14,7 @@ from scipy.ndimage import zoom
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from model.FSC_Net import FSCNet
+from model.FSC_Net import  Model
 from datasets.dataset_synapse import Synapse_dataset, RandomGenerator
 
 try:
@@ -266,7 +266,7 @@ def run_test(args):
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False,
                         num_workers=args.num_workers, pin_memory=(device.type == "cuda"))
 
-    net = FSCNet.Model(img_channels=args.img_channels,
+    net =  Model.Model(img_channels=args.img_channels,
                        n_classes=args.num_classes, base_c=args.base_c)
     source = load_model_weights(net, args.weights, args.trust_checkpoint)
     net.to(device).eval()
