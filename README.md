@@ -6,7 +6,7 @@ FSC-Net combines **Discrete Wavelet Transform (DWT)** downsampling, a **Spatial-
 
 ## 0. Main Environments
 
-The following core versions are taken from the provided Conda environment (`mamba`):
+The following core versions are taken from the provided Conda environment:
 
 - Python 3.10.21
 - PyTorch 2.13.0+cu129
