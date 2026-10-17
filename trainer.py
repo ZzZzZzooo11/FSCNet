@@ -8,7 +8,7 @@ import numpy as np
 from tqdm import tqdm
 from functools import partial
 
-# --- PyTorch 相关 ---
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -18,23 +18,19 @@ from torch.nn.modules.loss import CrossEntropyLoss
 from torchvision import transforms
 from tensorboardX import SummaryWriter
 
-# --- 绘图与计算工具 ---
+
 import matplotlib
 
-matplotlib.use('Agg')  # 防止在无图形界面的服务器上报错
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 from ptflops import get_model_complexity_info
 from medpy.metric.binary import hd95
 
-# --- 自定义模块 (请确保这些文件在你的目录下) ---
+
 from utils import DiceLoss
 from datasets.dataset_synapse import Synapse_dataset, RandomGenerator
 
-
-# ==============================================================================
-# 1. 基础工具函数
-# ==============================================================================
 
 def _worker_init_fn(worker_id, seed):
     """设置 DataLoader 的随机种子，保证可复现性"""
@@ -73,10 +69,6 @@ def calculate_binary_metrics(pred, target):
         'confusion': [tp, fp, fn, tn]
     }
 
-
-# ==============================================================================
-# 2. 绘图与可视化函数
-# ==============================================================================
 
 def draw_loss_curve(history, save_path):
     """绘制并保存训练 Loss 曲线"""
@@ -122,10 +114,6 @@ def plot_confusion_matrix(conf_matrix, save_dir):
     plt.close()
 
 
-# ==============================================================================
-# 3. 验证逻辑 (包含 T 检验数据收集)
-# ==============================================================================
-
 def validate(model, valloader, ce_loss, dice_loss):
     model.eval()
 
@@ -135,7 +123,7 @@ def validate(model, valloader, ce_loss, dice_loss):
         'confusion': np.zeros((2, 2))
     }
 
-    # [关键] 用于存储所有样本的指标，以便后续进行 T 检验 (Significant Test)
+
     sample_scores = {'dice': [], 'iou': []}
 
     val_loss_total = 0
@@ -143,43 +131,43 @@ def validate(model, valloader, ce_loss, dice_loss):
     total_samples = 0
     start_time = time.time()
 
-    # 使用 leave=False 让进度条跑完消失，保持 log 整洁
+
     for sampled_batch in tqdm(valloader, desc="Validating", leave=False):
         image_batch, label_batch = sampled_batch['image'].cuda(), sampled_batch['label'].cuda()
 
         with torch.no_grad():
             outputs = model(image_batch)
 
-            # --- 混合损失计算 (Code 1 逻辑) ---
+
             l_ce = ce_loss(outputs, label_batch.long())
             l_dice = dice_loss(outputs, label_batch, softmax=True)
             loss = 0.5 * l_ce + 0.5 * l_dice
             val_loss_total += loss.item() * image_batch.size(0)
 
-            # --- 预测结果处理 ---
+
             probs = F.softmax(outputs, dim=1)
             preds_batch = torch.argmax(probs, dim=1).cpu().numpy()
             labels_batch = label_batch.cpu().numpy()
 
-            # --- 逐样本计算指标 ---
+
             bs = image_batch.size(0)
             for i in range(bs):
                 total_samples += 1
                 pred_nodule = (preds_batch[i] == 1).astype(np.int32)
                 target_nodule = (labels_batch[i] == 1).astype(np.int32)
 
-                # 计算单样本指标
+
                 s_metric = calculate_binary_metrics(pred_nodule, target_nodule)
 
-                # [关键] 收集单样本数据
+
                 sample_scores['dice'].append(s_metric['dice'])
                 sample_scores['iou'].append(s_metric['iou'])
 
-                # 累加平均指标
+
                 for k in ['dice', 'iou', 'precision', 'recall', 'specificity', 'f1_score']:
                     metrics_accum[k] += s_metric[k]
 
-                # HD95 计算 (处理边界不存在的情况)
+
                 if np.any(target_nodule):
                     try:
                         metrics_accum['hd95'] += hd95(pred_nodule, target_nodule)
@@ -187,7 +175,7 @@ def validate(model, valloader, ce_loss, dice_loss):
                     except RuntimeError:
                         pass
 
-                # 混淆矩阵累加
+
                 tp, fp, fn, tn = s_metric['confusion']
                 metrics_accum['confusion'][0, 0] += tp;
                 metrics_accum['confusion'][0, 1] += fp
@@ -201,13 +189,9 @@ def validate(model, valloader, ce_loss, dice_loss):
     avg_metrics['loss'] = val_loss_total / total_samples
     avg_metrics['confusion'] = metrics_accum['confusion']
 
-    # 返回 sample_scores 用于 T 检验
+
     return avg_metrics, time.time() - start_time, metrics_accum['confusion'], sample_scores
 
-
-# ==============================================================================
-# 4. 推理速度测试
-# ==============================================================================
 
 def benchmark_inference_time(model, valloader, warmup_runs=20, measure_runs=100):
     """
@@ -306,10 +290,6 @@ def save_efficiency_metrics(save_path, input_channels, img_size, params, flops,
                 f'{training_time_hours:.6f}\n')
 
 
-# ==============================================================================
-# 5. 断点续训工具
-# ==============================================================================
-
 def _unwrap_model(model):
     """兼容普通模型与 nn.DataParallel，统一访问原始模型。"""
     return model.module if isinstance(model, nn.DataParallel) else model
@@ -401,7 +381,7 @@ def _restore_rng_state(state):
                     restored_cuda_states
                 )
             elif len(restored_cuda_states) > 0:
-                # GPU数量发生变化时，至少恢复当前GPU的状态
+
                 torch.cuda.set_rng_state(
                     restored_cuda_states[0],
                     device=torch.cuda.current_device()
@@ -576,16 +556,11 @@ def load_resume_checkpoint(checkpoint_path, model, optimizer):
     }
 
 
-
-# ==============================================================================
-# 6. 主训练函数 (Trainer)
-# ==============================================================================
-
 def trainer_synapse(args, model, snapshot_path):
-    # --- 1. 环境初始化 ---
+
     start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
-    # 配置 Logger
+
     logging.basicConfig(filename=os.path.join(snapshot_path, "log.txt"), level=logging.INFO,
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S', force=True)
     logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
@@ -593,8 +568,7 @@ def trainer_synapse(args, model, snapshot_path):
     logging.info(f"Training started at {start_time}")
     logging.info(f"Objective: 0.5*CE + 0.5*Dice | Optimizer: AdamW")
 
-    # 自动断点续训：默认检查 snapshot_path/last_checkpoint.pth。
-    # 可通过 args.auto_resume=False 禁用，或通过 args.resume_checkpoint 指定其他路径。
+
     default_checkpoint_path = os.path.join(snapshot_path, 'last_checkpoint.pth')
     configured_checkpoint_path = getattr(args, 'resume_checkpoint', '')
     checkpoint_path = configured_checkpoint_path or default_checkpoint_path
@@ -602,7 +576,7 @@ def trainer_synapse(args, model, snapshot_path):
     auto_resume = bool(getattr(args, 'auto_resume', True))
     resume_available = auto_resume and os.path.isfile(checkpoint_path)
 
-    # 配置 TensorBoard 和文本日志。恢复训练时不覆盖已有日志。
+
     writer = SummaryWriter(os.path.join(snapshot_path, 'log'))
     loss_log_path = os.path.join(snapshot_path, "loss_log.txt")
     val_log_path = os.path.join(snapshot_path, "val_log.txt")
@@ -615,14 +589,14 @@ def trainer_synapse(args, model, snapshot_path):
         if log_mode == 'w' or os.path.getsize(val_log_path) == 0:
             f.write("Epoch\tDice\tIoU\tPrecision\tRecall\tSpecificity\tHD95\n")
 
-    # --- 2. 模型复杂度计算 (修复版：自动适配通道数) ---
+
     real_flops, real_params = None, None
 
-    # 尝试从 args 获取通道数，如果没有则默认为 1 (医学图像通常为1)
+
     input_channels = getattr(args, 'n_channels', 3)
 
     def input_constructor(input_res):
-        # 构造虚拟输入: (Batch=1, Channels, H, W)
+
         return torch.ones(()).new_empty((1, input_channels, args.img_size, args.img_size)).cuda()
 
     try:
@@ -633,7 +607,7 @@ def trainer_synapse(args, model, snapshot_path):
     except Exception as e:
         logging.warning(f"⚠️ FLOPs calculation skipped: {e}")
 
-    # 无论 FLOPs 是否成功，手动计算参数量
+
     real_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
     def format_num(n):
@@ -655,7 +629,7 @@ def trainer_synapse(args, model, snapshot_path):
     )
     logging.info("-" * 60)
 
-    # --- 3. 数据加载 ---
+
     db_train = Synapse_dataset(base_dir=args.root_path, list_dir=args.list_dir, split="train",
                                transform=transforms.Compose(
                                    [RandomGenerator(output_size=[args.img_size, args.img_size])]))
@@ -667,20 +641,23 @@ def trainer_synapse(args, model, snapshot_path):
     db_val = Synapse_dataset(base_dir='data/isic2018/val', list_dir='lists/isic2018_list', split="val",
                              transform=transforms.Compose(
                                  [RandomGenerator(output_size=[args.img_size, args.img_size])]))
+    # db_val = Synapse_dataset(base_dir='data/lidc_idri/val', list_dir='lists/lidc_idri_list', split="val",
+    #                          transform=transforms.Compose(
+    #                              [RandomGenerator(output_size=[args.img_size, args.img_size])]))
     valloader = DataLoader(db_val, batch_size=1, shuffle=False, num_workers=0, pin_memory=True, worker_init_fn=init_fn)
 
     logging.info(f"Train Set: {len(db_train)} | Val Set: {len(db_val)}")
 
     if args.n_gpu > 1: model = nn.DataParallel(model)
 
-    # --- 4. 优化器与损失函数 ---
+
     ce_loss = CrossEntropyLoss()
     dice_loss = DiceLoss(args.num_classes)
 
-    # 使用 AdamW 优化器 (LR=1e-4)
-    optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.01)
 
-    # --- 5. 训练状态初始化与断点恢复 ---
+    optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.01)
+
+
     iter_num = 0
     max_epoch = args.max_epochs
     max_iterations = max_epoch * len(trainloader)
@@ -708,8 +685,7 @@ def trainer_synapse(args, model, snapshot_path):
                 'accumulated_training_seconds'
             ]
 
-            # 时间状态文件会比 epoch 检查点更频繁地更新。
-            # 取两者较大值，可保留断电前已运行但尚未完成的部分训练时间。
+
             try:
                 persisted_time_seconds = load_training_time_state(
                     time_state_path
@@ -750,7 +726,7 @@ def trainer_synapse(args, model, snapshot_path):
             "No additional training epoch will be executed."
         )
 
-    # 当前进程的训练计时。最终结果会加上检查点中保存的历史累计时间。
+
     current_session_training_start = time.perf_counter()
     trained_any_epoch = False
     time_sync_interval = max(
@@ -767,7 +743,7 @@ def trainer_synapse(args, model, snapshot_path):
             image_batch, label_batch = sampled_batch['image'].cuda(), sampled_batch['label'].cuda()
             outputs = model(image_batch)
 
-            # --- 损失计算 (Code 1 混合损失) ---
+
             l_ce = ce_loss(outputs, label_batch.long())
             l_dice = dice_loss(outputs, label_batch, softmax=True)
             loss = 0.5 * l_ce + 0.5 * l_dice
@@ -775,27 +751,24 @@ def trainer_synapse(args, model, snapshot_path):
             optimizer.zero_grad()
             loss.backward()
 
-            # 梯度裁剪 (防止梯度爆炸)
+
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
-            # Poly 学习率：按 epoch 和当前 batch 计算训练进度。
-            # checkpoint 恢复的 iter_num 仍保留用于日志、TensorBoard 和保存，
-            # 但不作为学习率调度的步数，避免计数偏移导致提前归零或产生复数。
+
             schedule_step = epoch_num * len(trainloader) + batch_idx
             progress = min(max(schedule_step / max_iterations, 0.0), 1.0)
-            lr_ = 1e-4 * (1.0 - progress) ** 0.9
+            lr_ = 1e-3 * (1.0 - progress) ** 0.9
             for pg in optimizer.param_groups:
                 pg['lr'] = float(lr_)
 
             optimizer.step()
 
-            # 记录
+
             iter_num += 1
             writer.add_scalar('info/total_loss', loss, iter_num)
             pbar.set_postfix({'loss': f"{loss.item():.4f}", 'dice': f"{l_dice.item():.4f}"})
 
-            # 周期性保存累计有效训练时间。若突然断电，最多丢失
-            # time_sync_interval - 1 个 iteration 的计时。
+
             if iter_num % time_sync_interval == 0:
                 active_seconds_now = (
                     accumulated_training_seconds
@@ -815,7 +788,7 @@ def trainer_synapse(args, model, snapshot_path):
                 with open(loss_log_path, 'a', encoding='utf-8') as f:
                     f.write(f"{epoch_num + 1}\t{iter_num}\t{loss.item():.6f}\t{l_ce.item():.6f}\t{l_dice.item():.6f}\n")
 
-                # 可视化图片记录 (每100个iter)
+
                 if iter_num % 100 == 0:
                     image = image_batch[0, 0:1, :, :]
                     image = (image - image.min()) / (image.max() - image.min())
@@ -823,24 +796,24 @@ def trainer_synapse(args, model, snapshot_path):
                     outputs_vis = torch.argmax(torch.softmax(outputs, dim=1), dim=1, keepdim=True)
                     writer.add_image('train/Prediction', outputs_vis[0, ...] * 50, iter_num)
 
-        # 绘制 Loss 曲线图
+
         draw_loss_curve(loss_history, snapshot_path)
 
-        # --- 验证环节 ---
+
         if (epoch_num + 1) % args.val_interval == 0:
             val_metrics, val_time, conf_matrix, sample_scores = validate(model, valloader, ce_loss, dice_loss)
 
-            # 记录验证曲线
+
             val_history['epoch'].append(epoch_num + 1)
             val_history['dice'].append(val_metrics['dice'])
             val_history['iou'].append(val_metrics['iou'])
             draw_val_curve(val_history, snapshot_path)
 
-            # TensorBoard 记录
+
             for metric, value in val_metrics.items():
                 if metric != 'confusion': writer.add_scalar(f'val/{metric}', value, epoch_num + 1)
 
-            # Txt 记录
+
             with open(val_log_path, 'a', encoding='utf-8') as f:
                 f.write(f"{epoch_num + 1}\t{val_metrics['dice']:.4f}\t{val_metrics['iou']:.4f}\t"
                         f"{val_metrics['precision']:.4f}\t{val_metrics['recall']:.4f}\t"
@@ -848,29 +821,28 @@ def trainer_synapse(args, model, snapshot_path):
 
             logging.info(f"Epoch {epoch_num + 1} Val: Dice={val_metrics['dice']:.4f}, IoU={val_metrics['iou']:.4f}")
 
-            # 保存最佳模型
+
             if val_metrics['dice'] > best_metrics['dice']:
                 best_metrics['dice'] = val_metrics['dice']
                 best_metrics['epoch'] = epoch_num + 1
                 best_confusion = conf_matrix
 
-                # 1. 保存模型权重
+
                 torch.save(model.state_dict(), os.path.join(snapshot_path, 'best_model.pth'))
 
-                # 2. 【关键】保存 T 检验用的逐样本数据
+
                 stats_path = os.path.join(snapshot_path, 'best_validation_scores.npz')
                 np.savez(stats_path, dice=np.array(sample_scores['dice']), iou=np.array(sample_scores['iou']))
                 logging.info(f"New Best Model! Sample-wise scores saved to {stats_path}")
 
-        # 定期保存普通模型权重
+
         if (epoch_num + 1) % 10 == 0:
             torch.save(
                 model.state_dict(),
                 os.path.join(snapshot_path, f'epoch_{epoch_num + 1}.pth')
             )
 
-        # 每个完整 epoch 结束后保存可恢复训练的完整检查点。
-        # 若在一个 epoch 中途断电，会从上一个完整 epoch 重新开始。
+
         cumulative_seconds_at_checkpoint = (
             accumulated_training_seconds
             + time.perf_counter()
@@ -899,9 +871,7 @@ def trainer_synapse(args, model, snapshot_path):
             f"{cumulative_seconds_at_checkpoint / 3600.0:.4f} h)"
         )
 
-    # --------------------------------------------------------------------------
-    # 训练时间与推理时间统计
-    # --------------------------------------------------------------------------
+
     if trained_any_epoch:
         training_time_seconds = (
             accumulated_training_seconds
@@ -917,7 +887,7 @@ def trainer_synapse(args, model, snapshot_path):
         training_time_seconds
     )
 
-    # 优先加载最佳验证权重，再进行统一的推理速度测试。
+
     best_model_path = os.path.join(snapshot_path, 'best_model.pth')
     if os.path.exists(best_model_path):
         try:
