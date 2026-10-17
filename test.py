@@ -14,7 +14,7 @@ from scipy.ndimage import zoom
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from networks.FSC_Net import  Model
+from networks.FSC_Net import Model
 from datasets.dataset_synapse import Synapse_dataset, RandomGenerator
 
 try:
@@ -186,9 +186,13 @@ def calculate_hd95(pred, target):
         return float("nan"), "hd95_runtime_error"
 
 
-def case_names_for_batch(batch, batch_size, first_index):
+def case_names_for_batch(batch, batch_size, first_index, sample_list=None):
     raw = batch.get("case_name", batch.get("name", batch.get("id")))
     if raw is None:
+        if sample_list is not None:
+            selected = sample_list[first_index:first_index + batch_size]
+            if len(selected) == batch_size:
+                return [str(name).strip() for name in selected]
         return [f"sample_{first_index + j:05d}" for j in range(batch_size)]
     if isinstance(raw, str):
         raw = [raw]
@@ -252,8 +256,8 @@ def run_test(args):
     output_dir.mkdir(parents=True, exist_ok=True)
     if args.transform == "same_as_val":
         transform = RandomGenerator(output_size=[args.img_size, args.img_size])
-        print("NOTICE: using RandomGenerator exactly as in your validation loader. "
-              "If it applies random augmentation, test results will be affected.")
+        print("NOTICE: using RandomGenerator as in the validation loader; "
+              "verify that upstream image normalization matches training.")
     else:
         transform = DeterministicTestTransform([args.img_size, args.img_size], args.img_channels)
         print("NOTICE: deterministic geometric resizing selected; confirm image normalization "
@@ -266,7 +270,7 @@ def run_test(args):
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False,
                         num_workers=args.num_workers, pin_memory=(device.type == "cuda"))
 
-    net =  Model.Model(img_channels=args.img_channels,
+    net = Model(img_channels=args.img_channels,
                        n_classes=args.num_classes, base_c=args.base_c)
     source = load_model_weights(net, args.weights, args.trust_checkpoint)
     net.to(device).eval()
@@ -299,7 +303,7 @@ def run_test(args):
             logits = net(images.to(device, non_blocking=True))
             predictions = torch.argmax(F.softmax(logits, dim=1), dim=1).cpu().numpy()
         truths = labels.cpu().numpy()
-        names = case_names_for_batch(batch, images.shape[0], len(rows))
+        names = case_names_for_batch(batch, images.shape[0], len(rows), dataset.sample_list)
         for j, name in enumerate(names):
             pred = (predictions[j] == 1)
             truth = (truths[j] == 1)
