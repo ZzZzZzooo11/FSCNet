@@ -14,7 +14,7 @@ from scipy.ndimage import zoom
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from model.FSC_Net import  Model
+from networks.FSC_Net import  Model
 from datasets.dataset_synapse import Synapse_dataset, RandomGenerator
 
 try:
