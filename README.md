@@ -19,7 +19,7 @@ Other main Python dependencies include `numpy`, `scipy`, `Pillow`, `h5py`, `medp
 ### ISIC 2018
 
 - Download the ISIC 2018 skin lesion segmentation dataset from the [ISIC Archive](https://challenge.isic-archive.com/data/).
-- The manuscript reports a 7:2:1 training/validation/test split and images resized to **256 × 256**.
+- 7:2:1 training/validation/test split and images resized to **256 × 256**.
 - For the current dataset loader, organize the files as follows:
 
 ```text
@@ -44,7 +44,7 @@ Each split file should contain one image ID per line, without the extension. Pop
 ### LIDC-IDRI
 
 - Download LIDC-IDRI from [The Cancer Imaging Archive (TCIA)](https://www.cancerimagingarchive.net/collection/lidc-idri/).
-- The manuscript reports a 7:2:1 split performed **at the patient level** to avoid overlap of patients between training, validation, and test subsets.
+- 7:2:1 split performed **at the patient level** to avoid overlap of patients between training, validation, and test subsets.
 - Prepare the 2D image/mask pairs and matching patient-disjoint split lists before training or testing.
 
 ## 2. Train FSC-Net
