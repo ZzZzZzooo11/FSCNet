@@ -39,7 +39,7 @@ lists/isic2018_list/
 └── test.txt
 ```
 
-Each split file should contain one image ID per line, without the extension. Populate the split files for the data partition you intend to run; creating a new random partition may not reproduce the manuscript's reported results.
+Each split file should contain one image ID per line, without the extension. 
 
 ### LIDC-IDRI
 
