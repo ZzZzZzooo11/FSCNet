@@ -77,45 +77,43 @@ python test.py --test_root data/isic2018/test \
 
 ## 5. Comparison Methods and Open-Source References
 
-We gratefully acknowledge the researchers and developers of the comparison methods used in the FSC-Net study. For convenience, we list the publicly available project/code links for all **16** comparison methods below, grouped by architectural family. The bracketed reference numbers match those in our manuscript.
-
-**Important:** These links point to original projects or publicly available implementations for reference and attribution; they do **not**, by themselves, establish which exact repository commits, checkpoints, adaptations, or training configurations produced the results in our comparison tables. Readers should consult the individual projects for their usage instructions and licenses.
+We gratefully acknowledge the researchers and developers of the comparison methods used in the FSC-Net study. For convenience, we list the publicly available project/code links for all **16** comparison methods below, grouped by architectural family.
 
 ### CNN-based methods
 
-| Method | Reference | Public code / project | Source note |
-|---|---:|---|---|
-| UNet | [7] | [milesial/Pytorch-UNet](https://github.com/milesial/Pytorch-UNet) | Widely used PyTorch implementation; not the original authors' release |
-| DeepLabV3+ | [8] | [VainF/DeepLabV3Plus-Pytorch](https://github.com/VainF/DeepLabV3Plus-Pytorch) | Public PyTorch implementation |
-| UNet++ | [9] | [MrGiovanni/UNetPlusPlus](https://github.com/MrGiovanni/UNetPlusPlus) | Original authors' implementation |
-| PSPNet | [34] | [hszhao/PSPNet](https://github.com/hszhao/PSPNet) | Original authors' project; see its linked PyTorch implementation |
-| ResUNet++ | [24] | [DebeshJha/ResUNetplusplus](https://github.com/DebeshJha/ResUNetplusplus) | Original author's project |
-| nnU-Net | [35] | [MIC-DKFZ/nnUNet](https://github.com/MIC-DKFZ/nnUNet) | Official framework; note that v1 and v2 configurations differ |
-| DCSAU-Net | [10] | [xq141839/DCSAU-Net](https://github.com/xq141839/DCSAU-Net) | Authors' project |
-| AMSUnet | [26] | [llluochen/AMSUnet](https://github.com/llluochen/AMSUnet) | GitHub project identified in the publication |
-| MSDANet | [11] | [1999luan/MSDANet](https://github.com/1999luan/MSDANet) | Public implementation; author/commit provenance should be checked |
-| PDF-UNet | [36] | [ahmedeqbal/PDF-UNet](https://github.com/ahmedeqbal/PDF-UNet) | Original implementation; publication proposes a semi-supervised framework |
+| Method | Public code / project |
+|---|---|
+| UNet | [milesial/Pytorch-UNet](https://github.com/milesial/Pytorch-UNet) |
+| DeepLabV3+ | [VainF/DeepLabV3Plus-Pytorch](https://github.com/VainF/DeepLabV3Plus-Pytorch) |
+| UNet++ | [MrGiovanni/UNetPlusPlus](https://github.com/MrGiovanni/UNetPlusPlus) |
+| PSPNet | [hszhao/PSPNet](https://github.com/hszhao/PSPNet) |
+| ResUNet++ | [DebeshJha/ResUNetplusplus](https://github.com/DebeshJha/ResUNetplusplus) |
+| nnU-Net | [MIC-DKFZ/nnUNet](https://github.com/MIC-DKFZ/nnUNet) |
+| DCSAU-Net | [xq141839/DCSAU-Net](https://github.com/xq141839/DCSAU-Net) |
+| AMSUnet | [llluochen/AMSUnet](https://github.com/llluochen/AMSUnet) |
+| MSDANet | [1999luan/MSDANet](https://github.com/1999luan/MSDANet) |
+| PDF-UNet | [ahmedeqbal/PDF-UNet](https://github.com/ahmedeqbal/PDF-UNet) |
 
 ### Transformer-based and hybrid methods
 
-| Method | Reference | Public code / project | Source note |
-|---|---:|---|---|
-| BRAU-Net++ | [25] | [Caipengzhou/BRAU-Netplusplus](https://github.com/Caipengzhou/BRAU-Netplusplus) | Project linked to the published method |
-| HCT-Unet | [18] | [Author-released Zenodo code archive](https://doi.org/10.5281/zenodo.11070837) | **No matching GitHub repository verified**; original paper identifies a Zenodo archive |
-| CSWin-UNet | [12] | [eatbeanss/CSWin-UNet](https://github.com/eatbeanss/CSWin-UNet) | GitHub code link provided by the paper |
+| Method | Public code / project |
+|---|---|
+| BRAU-Net++ | [Caipengzhou/BRAU-Netplusplus](https://github.com/Caipengzhou/BRAU-Netplusplus) |
+| HCT-Unet | [Author-released Zenodo code archive](https://doi.org/10.5281/zenodo.11070837) |
+| CSWin-UNet | [eatbeanss/CSWin-UNet](https://github.com/eatbeanss/CSWin-UNet) |
 
 ### Frequency-domain and state-space methods
 
-| Method | Reference | Public code / project | Source note |
-|---|---:|---|---|
-| SkinMamba | [29] | [zs1314/SkinMamba](https://github.com/zs1314/SkinMamba) | Authors' project |
-| FreqConvMamba | [23] | [ccode-Rookie/FreqConvMamba](https://github.com/ccode-Rookie/FreqConvMamba) | Authors' project |
+| Method | Public code / project |
+|---|---|
+| SkinMamba | [zs1314/SkinMamba](https://github.com/zs1314/SkinMamba) |
+| FreqConvMamba | [ccode-Rookie/FreqConvMamba](https://github.com/ccode-Rookie/FreqConvMamba) |
 
 ### Prompt-based foundation model
 
-| Method | Reference | Public code / project | Source note |
-|---|---:|---|---|
-| SAM 2 | [37] | [facebookresearch/sam2](https://github.com/facebookresearch/sam2) | Official Meta repository; results depend on the checkpoint and prompting protocol |
+| Method | Public code / project |
+|---|---|
+| SAM 2 | [facebookresearch/sam2](https://github.com/facebookresearch/sam2) |
 
 ## 6. Acknowledgements
 
