@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import torch.fft
 
 
-from DBnetworks.DCSAU.csa_layer import CSA
+from networks.csa_layer import CSA
 
 
 class DWT_Downsampling(nn.Module):
