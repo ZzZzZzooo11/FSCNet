@@ -33,16 +33,14 @@ from datasets.dataset_synapse import Synapse_dataset, RandomGenerator
 
 
 def _worker_init_fn(worker_id, seed):
-    """设置 DataLoader 的随机种子，保证可复现性"""
+
     random.seed(seed + worker_id)
     torch.manual_seed(seed + worker_id)
 
 
 def calculate_binary_metrics(pred, target):
-    """
-    计算二分类指标：Dice, IoU, Precision, Recall, Specificity
-    输入: pred (预测掩码 0/1), target (真实标签 0/1)
-    """
+
+
     smooth = 1e-5
     pred_flat = pred.flatten()
     target_flat = target.flatten()
@@ -70,8 +68,28 @@ def calculate_binary_metrics(pred, target):
     }
 
 
+def calculate_hd95_with_empty_policy(pred, target):
+    pred_nonempty = bool(np.any(pred))
+    target_nonempty = bool(np.any(target))
+
+    if pred_nonempty and target_nonempty:
+        result = float(hd95(pred, target))
+        if not np.isfinite(result):
+            raise ValueError("HD95 returned a non-finite value for non-empty masks.")
+        return result, 'normal'
+
+    if not pred_nonempty and not target_nonempty:
+        return 0.0, 'both_empty'
+
+    height, width = pred.shape[-2:]
+    penalty = float(np.hypot(height - 1, width - 1))
+    if not pred_nonempty:
+        return penalty, 'empty_prediction'
+    return penalty, 'empty_target'
+
+
 def draw_loss_curve(history, save_path):
-    """绘制并保存训练 Loss 曲线"""
+
     iters = history['iter']
     plt.figure(figsize=(10, 5))
     plt.plot(iters, history['loss'], label='Total Loss', color='red', linewidth=2)
@@ -88,7 +106,7 @@ def draw_loss_curve(history, save_path):
 
 
 def draw_val_curve(history, save_path):
-    """绘制并保存验证集指标变化曲线"""
+
     epochs = history['epoch']
     plt.figure(figsize=(10, 5))
     plt.plot(epochs, history['dice'], label='Dice', color='purple', marker='.')
@@ -104,7 +122,7 @@ def draw_val_curve(history, save_path):
 
 
 def plot_confusion_matrix(conf_matrix, save_dir):
-    """绘制并保存混淆矩阵"""
+
     plt.figure(figsize=(8, 6))
     disp = ConfusionMatrixDisplay(confusion_matrix=conf_matrix.astype(int),
                                   display_labels=['Background', 'Nodule'])
@@ -128,6 +146,12 @@ def validate(model, valloader, ce_loss, dice_loss):
 
     val_loss_total = 0
     hd95_count = 0
+    hd95_status_counts = {
+        'normal': 0,
+        'empty_prediction': 0,
+        'empty_target': 0,
+        'both_empty': 0
+    }
     total_samples = 0
     start_time = time.time()
 
@@ -168,19 +192,19 @@ def validate(model, valloader, ce_loss, dice_loss):
                     metrics_accum[k] += s_metric[k]
 
 
-                if np.any(target_nodule):
-                    try:
-                        metrics_accum['hd95'] += hd95(pred_nodule, target_nodule)
-                        hd95_count += 1
-                    except RuntimeError:
-                        pass
+                hd95_value, hd95_status = calculate_hd95_with_empty_policy(
+                    pred_nodule, target_nodule
+                )
+                metrics_accum['hd95'] += hd95_value
+                hd95_count += 1
+                hd95_status_counts[hd95_status] += 1
 
 
                 tp, fp, fn, tn = s_metric['confusion']
-                metrics_accum['confusion'][0, 0] += tp;
+                metrics_accum['confusion'][0, 0] += tn
                 metrics_accum['confusion'][0, 1] += fp
-                metrics_accum['confusion'][1, 0] += fn;
-                metrics_accum['confusion'][1, 1] += tn
+                metrics_accum['confusion'][1, 0] += fn
+                metrics_accum['confusion'][1, 1] += tp
 
     if total_samples == 0: total_samples = 1
 
@@ -189,21 +213,23 @@ def validate(model, valloader, ce_loss, dice_loss):
     avg_metrics['loss'] = val_loss_total / total_samples
     avg_metrics['confusion'] = metrics_accum['confusion']
 
+    logging.info(
+        "Validation HD95: total=%d, valid=%d, normal=%d, "
+        "empty_prediction=%d, empty_target=%d, both_empty=%d; "
+        "one-sided empty masks use the image-diagonal penalty in pixels.",
+        total_samples, hd95_count,
+        hd95_status_counts['normal'],
+        hd95_status_counts['empty_prediction'],
+        hd95_status_counts['empty_target'],
+        hd95_status_counts['both_empty']
+    )
 
     return avg_metrics, time.time() - start_time, metrics_accum['confusion'], sample_scores
 
 
-def benchmark_inference_time(model, valloader, warmup_runs=20, measure_runs=100):
-    """
-    测量单张图像的模型前向推理时间（ms/image）。
+def benchmark_inference_time(model, valloader, warmup_runs=30, measure_runs=100):
 
-    统计规则：
-    1. batch size 使用 valloader 当前设置，建议设为 1；
-    2. 仅统计 model(image) 的前向时间；
-    3. 不包含数据读取、CPU->GPU 传输、Softmax、Argmax 和指标计算；
-    4. CUDA 环境下先预热，并在计时前后执行同步；
-    5. 返回平均值、标准差和实际测试次数。
-    """
+
     model.eval()
     device = next(model.parameters()).device
 
@@ -262,41 +288,43 @@ def benchmark_inference_time(model, valloader, warmup_runs=20, measure_runs=100)
     return float(timings_ms.mean()), float(timings_ms.std(ddof=0)), int(timings_ms.size)
 
 
-def save_efficiency_metrics(save_path, input_channels, img_size, params, flops,
+def save_efficiency_metrics(save_path, input_channels, img_size, params, macs,
                             inference_mean_ms, inference_std_ms, inference_runs,
                             training_time_hours, gpu_name):
-    """将模型复杂度、推理时间和训练时间同时保存为TXT与CSV。"""
+
     txt_path = os.path.join(save_path, 'efficiency_metrics.txt')
     csv_path = os.path.join(save_path, 'efficiency_metrics.csv')
-    flops_text = str(flops) if flops is not None else 'N/A'
+    macs_text = str(macs) if macs is not None else 'N/A'
 
     with open(txt_path, 'w', encoding='utf-8') as f:
         f.write(f"GPU: {gpu_name}\n")
         f.write(f"Input Shape: 1 x {input_channels} x {img_size} x {img_size}\n")
         f.write(f"Total Parameters: {params}\n")
-        f.write(f"Total FLOPs: {flops_text}\n")
+        f.write(f"ptflops counted MACs: {macs_text}\n")
+        f.write("Note: rFFT/irFFT and complex operations may not be counted; "
+                "MACs are not complete FLOPs.\n")
         f.write(f"Inference Time Mean (ms/image): {inference_mean_ms:.6f}\n")
         f.write(f"Inference Time Std (ms/image): {inference_std_ms:.6f}\n")
         f.write(f"Inference Runs: {inference_runs}\n")
         f.write(f"Training Time (h, cumulative active): {training_time_hours:.6f}\n")
 
     with open(csv_path, 'w', encoding='utf-8') as f:
-        f.write('GPU,Input_Channels,Image_Size,Total_Parameters,Total_FLOPs,'
+        f.write('GPU,Input_Channels,Image_Size,Total_Parameters,ptflops_Counted_MACs,'
                 'Inference_Time_Mean_ms,Inference_Time_Std_ms,Inference_Runs,'
                 'Training_Time_h\n')
         safe_gpu_name = gpu_name.replace(',', ' ')
-        f.write(f'{safe_gpu_name},{input_channels},{img_size},{params},{flops_text},'
+        f.write(f'{safe_gpu_name},{input_channels},{img_size},{params},{macs_text},'
                 f'{inference_mean_ms:.6f},{inference_std_ms:.6f},{inference_runs},'
                 f'{training_time_hours:.6f}\n')
 
 
 def _unwrap_model(model):
-    """兼容普通模型与 nn.DataParallel，统一访问原始模型。"""
+
     return model.module if isinstance(model, nn.DataParallel) else model
 
 
 def _capture_rng_state():
-    """保存随机数生成器状态，使按 epoch 恢复后的训练尽可能可复现。"""
+
     state = {
         'python': random.getstate(),
         'numpy': np.random.get_state(),
@@ -308,13 +336,8 @@ def _capture_rng_state():
 
 
 def _restore_rng_state(state):
-    """
-    恢复随机数状态。
 
-    强制将PyTorch RNG状态转换为CPU uint8 Tensor，
-    避免检查点通过map_location加载到GPU后出现：
-    RNG state must be a torch.ByteTensor。
-    """
+
     if not state:
         return
 
@@ -394,7 +417,7 @@ def _restore_rng_state(state):
 
 
 def _move_optimizer_state_to_device(optimizer, device):
-    """确保恢复后的优化器状态位于模型所在设备。"""
+
     for optimizer_state in optimizer.state.values():
         for key, value in optimizer_state.items():
             if torch.is_tensor(value):
@@ -402,12 +425,8 @@ def _move_optimizer_state_to_device(optimizer, device):
 
 
 def save_training_time_state(time_state_path, cumulative_seconds):
-    """
-    保存累计训练时间。
 
-    Windows下若文件被杀毒软件、同步程序或其他进程短暂占用，
-    自动重试；最终仍失败时只记录警告，不中断模型训练。
-    """
+
     temporary_path = (
         f"{time_state_path}.{os.getpid()}.tmp"
     )
@@ -458,7 +477,7 @@ def save_training_time_state(time_state_path, cumulative_seconds):
 
 
 def load_training_time_state(time_state_path):
-    """读取累计有效训练时间；文件不存在时返回0。"""
+
     if not os.path.isfile(time_state_path):
         return 0.0
 
@@ -472,12 +491,8 @@ def save_resume_checkpoint(checkpoint_path, model, optimizer, completed_epoch,
                            iter_num, best_metrics, best_confusion,
                            loss_history, val_history,
                            accumulated_training_seconds):
-    """
-    原子方式保存完整训练状态。
 
-    completed_epoch 为刚刚完整训练结束的 epoch 的 0-based 索引；
-    恢复时从 completed_epoch + 1 开始。
-    """
+
     checkpoint = {
         'format_version': 1,
         'model_state_dict': _unwrap_model(model).state_dict(),
@@ -498,7 +513,7 @@ def save_resume_checkpoint(checkpoint_path, model, optimizer, completed_epoch,
 
 
 def load_resume_checkpoint(checkpoint_path, model, optimizer):
-    """加载完整检查点并返回恢复训练所需状态。"""
+
     device = next(_unwrap_model(model).parameters()).device
 
     try:
@@ -590,22 +605,23 @@ def trainer_synapse(args, model, snapshot_path):
             f.write("Epoch\tDice\tIoU\tPrecision\tRecall\tSpecificity\tHD95\n")
 
 
-    real_flops, real_params = None, None
+    real_macs, real_params = None, None
 
 
     input_channels = getattr(args, 'n_channels', 3)
 
-    def input_constructor(input_res):
-
-        return torch.ones(()).new_empty((1, input_channels, args.img_size, args.img_size)).cuda()
-
     try:
-        flops, params = get_model_complexity_info(model, (input_channels, args.img_size, args.img_size),
-                                                  as_strings=False, print_per_layer_stat=False,
-                                                  verbose=False, input_constructor=input_constructor)
-        real_flops = flops
+        macs, _ = get_model_complexity_info(
+            model, (input_channels, args.img_size, args.img_size),
+            as_strings=False, print_per_layer_stat=False, verbose=False
+        )
+        real_macs = macs
+        logging.warning(
+            "ptflops reports counted MACs; rFFT/irFFT and complex operations "
+            "may not be included. Do not interpret this value as full FLOPs."
+        )
     except Exception as e:
-        logging.warning(f"⚠️ FLOPs calculation skipped: {e}")
+        logging.warning(f"MACs calculation skipped: {e}")
 
 
     real_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -620,7 +636,7 @@ def trainer_synapse(args, model, snapshot_path):
     logging.info(f"Input Channels:   {input_channels}")
     logging.info(f"Input Resolution: {args.img_size} x {args.img_size}")
     logging.info(f"Total Parameters: {format_num(real_params)}")
-    logging.info(f"Total FLOPs:      {format_num(real_flops) if real_flops is not None else 'N/A'}")
+    logging.info(f"Counted MACs:     {format_num(real_macs) if real_macs is not None else 'N/A'}")
     logging.info("Inference Time:   measured after training with batch size 1")
     logging.info("Training Time:    cumulative active training wall time across resumes")
     logging.info(
@@ -641,9 +657,8 @@ def trainer_synapse(args, model, snapshot_path):
     db_val = Synapse_dataset(base_dir='data/isic2018/val', list_dir='lists/isic2018_list', split="val",
                              transform=transforms.Compose(
                                  [RandomGenerator(output_size=[args.img_size, args.img_size])]))
-    # db_val = Synapse_dataset(base_dir='data/lidc_idri/val', list_dir='lists/lidc_idri_list', split="val",
-    #                          transform=transforms.Compose(
-    #                              [RandomGenerator(output_size=[args.img_size, args.img_size])]))
+
+
     valloader = DataLoader(db_val, batch_size=1, shuffle=False, num_workers=0, pin_memory=True, worker_init_fn=init_fn)
 
     logging.info(f"Train Set: {len(db_train)} | Val Set: {len(db_val)}")
@@ -897,7 +912,7 @@ def trainer_synapse(args, model, snapshot_path):
         except Exception as e:
             logging.warning(f"Best model loading skipped before inference benchmark: {e}")
 
-    inference_warmup = int(getattr(args, 'inference_warmup', 20))
+    inference_warmup = int(getattr(args, 'inference_warmup', 30))
     inference_runs = int(getattr(args, 'inference_runs', 100))
     inference_mean_ms, inference_std_ms, actual_inference_runs = benchmark_inference_time(
         model=model,
@@ -910,7 +925,7 @@ def trainer_synapse(args, model, snapshot_path):
     logging.info("MODEL EFFICIENCY SUMMARY")
     logging.info(f"Hardware:              {gpu_name}")
     logging.info(f"Total Parameters:      {format_num(real_params)}")
-    logging.info(f"Total FLOPs:           {format_num(real_flops) if real_flops is not None else 'N/A'}")
+    logging.info(f"Counted MACs (ptflops): {format_num(real_macs) if real_macs is not None else 'N/A'}")
     logging.info(
         f"Inference Time (ms):   {inference_mean_ms:.3f} ± {inference_std_ms:.3f} "
         f"(batch=1, n={actual_inference_runs})"
@@ -923,7 +938,7 @@ def trainer_synapse(args, model, snapshot_path):
         input_channels=input_channels,
         img_size=args.img_size,
         params=real_params,
-        flops=real_flops,
+        macs=real_macs,
         inference_mean_ms=inference_mean_ms,
         inference_std_ms=inference_std_ms,
         inference_runs=actual_inference_runs,
