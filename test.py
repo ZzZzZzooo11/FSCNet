@@ -174,16 +174,25 @@ def calculate_binary_metrics(pred, target):
 
 
 def calculate_hd95(pred, target):
-    if not np.any(target):
-        return float("nan"), "empty_ground_truth"
-    if not np.any(pred):
-        return float("nan"), "empty_prediction"
-    if medpy_hd95 is None:
-        raise ImportError("HD95 calculation requires medpy: pip install medpy")
-    try:
-        return float(medpy_hd95(pred.astype(bool), target.astype(bool))), "ok"
-    except RuntimeError:
-        return float("nan"), "hd95_runtime_error"
+    pred_nonempty = bool(np.any(pred))
+    target_nonempty = bool(np.any(target))
+
+    if pred_nonempty and target_nonempty:
+        if medpy_hd95 is None:
+            raise ImportError("HD95 calculation requires medpy: pip install medpy")
+        value = float(medpy_hd95(pred.astype(bool), target.astype(bool)))
+        if not np.isfinite(value):
+            raise ValueError("HD95 returned a non-finite value for non-empty masks")
+        return value, "normal"
+
+    if not pred_nonempty and not target_nonempty:
+        return 0.0, "both_empty"
+
+    height, width = pred.shape[-2:]
+    penalty = float(np.hypot(height - 1, width - 1))
+    if not pred_nonempty:
+        return penalty, "empty_prediction"
+    return penalty, "empty_target"
 
 
 def case_names_for_batch(batch, batch_size, first_index, sample_list=None):
@@ -324,10 +333,10 @@ def run_test(args):
         raise RuntimeError("Test loader yielded no samples")
 
     averages = {key: float(np.mean([r[key] for r in rows])) for key in METRIC_NAMES}
-    valid_hd = [r["hd95"] for r in rows if np.isfinite(r["hd95"])]
-    averages["hd95"] = float(np.mean(valid_hd)) if valid_hd else None
-    statuses = {s: sum(row["hd95_status"] == s for row in rows)
-                for s in sorted(set(row["hd95_status"] for row in rows))}
+    hd_values = [r["hd95"] for r in rows]
+    averages["hd95"] = float(np.mean(hd_values))
+    statuses = {status: sum(row["hd95_status"] == status for row in rows)
+                for status in ("normal", "empty_prediction", "empty_target", "both_empty")}
     benchmark = None
     if not args.no_benchmark:
         benchmark = inference_benchmark(net, first_benchmark_sample, device,
@@ -366,8 +375,11 @@ def run_test(args):
         "metric_aggregation": "mean of per-image scores; identical to supplied validate()",
         "metrics_fraction": averages,
         "hd95_units": "pixels at model input resolution",
-        "hd95_valid_count": len(valid_hd),
-        "hd95_skipped_count": len(rows) - len(valid_hd),
+        "hd95_valid_count": len(hd_values),
+        "hd95_skipped_count": 0,
+        "hd95_normal_count": statuses["normal"],
+        "hd95_penalized_count": statuses["empty_prediction"] + statuses["empty_target"],
+        "hd95_policy": "nonempty masks: medpy HD95; one empty mask: image diagonal; both empty: 0",
         "hd95_status_counts": statuses,
         "confusion_actual_rows_predicted_cols": [[confusion["tn"], confusion["fp"]],
                                                  [confusion["fn"], confusion["tp"]]],
@@ -382,14 +394,15 @@ def run_test(args):
     print("=" * 64)
     for name in METRIC_NAMES:
         print(f"{name:>12s}: {averages[name] * 100:.2f}%")
-    print(f"{'HD95':>12s}: {averages['hd95']:.4f} px ({len(valid_hd)}/{len(rows)} valid)"
-          if averages["hd95"] is not None else "        HD95: N/A (no valid samples)")
+    print(f"{'HD95':>12s}: {averages['hd95']:.4f} px ({len(hd_values)}/{len(rows)} included)")
+    print(f"HD95 cases: normal={statuses['normal']}, empty_prediction={statuses['empty_prediction']}, "
+          f"empty_target={statuses['empty_target']}, both_empty={statuses['both_empty']}")
     print(f"{'Duration':>12s}: {elapsed:.2f} s (includes data / postprocessing)")
     if benchmark is not None:
         print(f"{'Inference':>12s}: {benchmark['mean_ms_per_image']:.3f} ± "
               f"{benchmark['std_ms_per_image']:.3f} ms/image (batch=1)")
     print(f"Results saved to: {output_dir.resolve()}")
-    print("NOTE: HD95 follows the original validate() rule and excludes empty-mask cases.")
+    print("HD95 policy: nonempty=MedPy; one empty mask=image diagonal; both empty=0.")
     return summary
 
 
