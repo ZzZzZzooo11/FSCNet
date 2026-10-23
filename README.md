@@ -1,6 +1,6 @@
 # FSC-Net
 
-This is the code repository for **"FSC-Net: A Spatial-Frequency Synergistic Network with Edge Guidance for Medical Image Segmentation"**.
+This is the code repository for **"FSC-Net: Gated spatial–frequency fusion with edge-guided refinement for medical image segmentation"**.
 
 FSC-Net combines **Discrete Wavelet Transform (DWT)** downsampling, a **Spatial-Frequency Feature Module (SFFM)**, and an **Edge-Guided Attention Block (EGAB)** for pulmonary nodule and skin lesion segmentation.
 
